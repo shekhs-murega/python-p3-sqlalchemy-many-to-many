@@ -1,56 +1,77 @@
-#!/usr/bin/env python3
+from sqlalchemy import create_engine, func, Table, Column, Integer, String, DateTime, MetaData, ForeignKey
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
 
-from faker import Faker
-import random
+convention = {
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+}
+metadata = MetaData(naming_convention=convention)
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+Base = declarative_base(metadata=metadata)
 
-from models import Game, Review
+# Define the association table
+game_user = Table(
+    'game_users',
+    Base.metadata,
+    Column('game_id', ForeignKey('games.id'), primary_key=True),
+    Column('user_id', ForeignKey('users.id'), primary_key=True),
+    extend_existing=True,
+)
 
-if __name__ == '__main__':
-    engine = create_engine('sqlite:///many_to_many.db')
-    Session = sessionmaker(bind=engine)
-    session = Session()
+class Game(Base):
+    __tablename__ = 'games'
 
-    session.query(Game).delete()
-    session.query(Review).delete()
+    id = Column(Integer(), primary_key=True)
+    title = Column(String())
+    genre = Column(String())
+    platform = Column(String())
+    price = Column(Integer())
 
-    fake = Faker()
+    # Define the many-to-many relationship with User
+    users = relationship('User', secondary=game_user, back_populates='games')
 
-    genres = ['action', 'adventure', 'strategy',
-        'puzzle', 'first-person shooter', 'racing']
-    platforms = ['nintendo 64', 'gamecube', 'wii', 'wii u', 'switch',
-        'playstation', 'playstation 2', 'playstation 3', 'playstation 4',
-        'playstation 5', 'xbox', 'xbox 360', 'xbox one', 'pc']
+    # Relationship with Review
+    reviews = relationship('Review', backref='game')
 
-    games = []
-    for i in range(50):
-        game = Game(
-            title=fake.unique.name(),
-            genre=random.choice(genres),
-            platform=random.choice(platforms),
-            price=random.randint(5, 60)
-        )
+    def __repr__(self):
+        return f'Game(id={self.id}, ' + \
+            f'title={self.title}, ' + \
+            f'platform={self.platform})'
 
-        # add and commit individually to get IDs back
-        session.add(game)
-        session.commit()
+class Review(Base):
+    __tablename__ = 'reviews'
 
-        games.append(game)
+    id = Column(Integer(), primary_key=True)
+    score = Column(Integer())
+    comment = Column(String())
+    
+    game_id = Column(Integer(), ForeignKey('games.id'))
+    user_id = Column(Integer(), ForeignKey('users.id'))
+    
+    # Define relationships with different backref names
+    associated_game = relationship('Game', backref='reviews_associated')
+    associated_user = relationship('User', backref='reviews_associated')
 
-    reviews = []
-    for game in games:
-        for i in range(random.randint(1,5)):
-            
-            review = Review(
-                score=random.randint(0, 10),
-                comment=fake.sentence(),
-                game_id=game.id,
-            )
+    def __repr__(self):
+        return f'Review(id={self.id}, ' + \
+            f'score={self.score}, ' + \
+            f'game_id={self.game_id})'
 
-            reviews.append(review)
 
-    session.bulk_save_objects(reviews)
-    session.commit()
-    session.close()
+class User(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer(), primary_key=True)
+    name = Column(String())
+    created_at = Column(DateTime(), server_default=func.now())
+    updated_at = Column(DateTime(), onupdate=func.now())
+
+    # Define the many-to-many relationship with Game
+    games = relationship('Game', secondary=game_user, back_populates='users')
+
+    # Relationship with Review
+    reviews = relationship('Review', backref='user')
+
+    def __repr__(self):
+        return f'User(id={self.id}, ' + \
+            f'name={self.name})'
